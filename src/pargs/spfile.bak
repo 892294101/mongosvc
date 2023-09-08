@@ -1,0 +1,134 @@
+package pargs
+
+import (
+	"fmt"
+	"github.com/892294101/jxutils"
+	"github.com/magiconair/properties"
+	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+	"path/filepath"
+	"regexp"
+	"strings"
+)
+
+const (
+	DBConnAddressKey = "ADDRESS"
+	DBConnUrlKey     = "URL"
+	DBConnRegexp     = `^(?i)` + DBConnAddressKey + `\.(?i)([a-zA-Z0-9_\-]+)$`
+
+	IndexKey    = "INDEX"
+	IndexRegexp = `^(?i)` + IndexKey + `\.([a-zA-Z0-9_\-]+)\.([a-zA-Z0-9_\-]+)$`
+)
+
+type Param struct {
+	keyLibs map[string]string
+	keySets map[string]map[string]map[string][]string
+	log     *logrus.Logger
+}
+
+func (s *Param) Load(log *logrus.Logger) error {
+	s.log = log
+
+	s.registerKey(DBConnRegexp)
+	s.registerKey(IndexRegexp)
+
+	dir, err := jxutils.GetProgramHome()
+	if err != nil {
+		return err
+	}
+	configPath := filepath.Join(dir, "conf", "svc.conf")
+	s.log.Infof("read %v configuration file content", configPath)
+	p, err := properties.LoadFile(configPath, properties.UTF8)
+	if err != nil {
+		return err
+	}
+
+	for _, s2 := range p.Keys() {
+		var illegal bool
+		for keyRegx, _ := range s.keyLibs {
+			re := regexp.MustCompile(keyRegx)
+
+			if re.MatchString(s2) {
+				illegal = true
+				ks := re.FindStringSubmatch(s2)
+				r := strings.Split(ks[0], ".") // get first key from keys string
+				firstKey := strings.ToUpper(r[0])
+				val, _ := p.Get(ks[0]) // get value from parameter file
+				switch keyRegx {
+				case DBConnRegexp:
+					twoKey := strings.ToUpper(ks[1])
+					if !strings.EqualFold(twoKey, DBConnUrlKey) {
+						return errors.Errorf("Keyword illegal: %v", s2)
+					}
+
+					if _, ok := s.keySets[firstKey]; !ok {
+						s.keySets[firstKey] = make(map[string]map[string][]string)
+						s.keySets[firstKey][twoKey] = map[string][]string{}
+						s.keySets[firstKey][twoKey][val] = nil
+					} else {
+						s.keySets[firstKey][twoKey] = map[string][]string{}
+						s.keySets[firstKey][twoKey][val] = nil
+					}
+				case IndexRegexp:
+
+					if _, err := jxutils.JsonStr2Bson(val); err != nil {
+						return errors.Errorf("value of keyword %v must be a Bson structure: %v", s2, val)
+					}
+
+					if _, ok := s.keySets[firstKey]; !ok {
+						s.keySets[firstKey] = make(map[string]map[string][]string)
+						if _, ok := s.keySets[firstKey][ks[1]]; !ok {
+							s.keySets[firstKey][ks[1]] = map[string][]string{}
+							s.keySets[firstKey][ks[1]][ks[2]] = append(s.keySets[firstKey][ks[1]][ks[2]], val)
+						} else {
+							s.keySets[firstKey][ks[1]][ks[2]] = append(s.keySets[firstKey][ks[1]][ks[2]], val)
+						}
+
+					} else {
+						if _, ok := s.keySets[firstKey][ks[1]]; !ok {
+							s.keySets[firstKey][ks[1]] = map[string][]string{}
+							s.keySets[firstKey][ks[1]][ks[2]] = append(s.keySets[firstKey][ks[1]][ks[2]], val)
+						} else {
+							s.keySets[firstKey][ks[1]][ks[2]] = append(s.keySets[firstKey][ks[1]][ks[2]], val)
+						}
+					}
+				}
+			}
+
+		}
+		if !illegal {
+			return errors.Errorf("Keyword illegal: %v", s2)
+		}
+
+	}
+
+	//fmt.Println(s.keySets)
+
+	return nil
+}
+
+func (s *Param) registerKey(key string) error {
+	if s.keyLibs == nil {
+		s.keyLibs = make(map[string]string)
+	}
+	if s.keySets == nil {
+		s.keySets = make(map[string]map[string]map[string][]string)
+	}
+	if _, ok := s.keyLibs[key]; ok {
+		return errors.Errorf("Keyword regular already exists: %v", key)
+	}
+	s.keyLibs[key] = ""
+	return nil
+}
+
+func (s *Param) GetDBUrl() (string, error) {
+	v, ok := s.keySets[DBConnAddressKey][DBConnUrlKey]
+	if ok {
+		fmt.Println(v)
+	}
+	fmt.Println(s.keySets)
+	return "", nil
+}
+func NewParams() *Param {
+	return new(Param)
+}
