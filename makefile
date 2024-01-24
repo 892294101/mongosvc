@@ -1,9 +1,8 @@
 GOCMD=go
 #export TAG=1.1.0
 #export BD=$(shell date '+%b %d %Y %T')
-#GOBUILD=${GOCMD} build -gcflags=all='-l -N' -ldflags "-s -w -X 'qnsoft/mparallel/src/auth.Version=$(TAG)' -X 'qnsoft/mparallel/src/auth.BDate=$(BD)'"
+#GOBUILD=${GOCMD} build -gcflags=all='-l -N' -ldflags "-s -w -X 'github.com/892294101/mongosvc/mparallel/src/auth.Version=$(TAG)' -X 'github.com/892294101/mongosvc/mparallel/src/auth.BDate=$(BD)'"
 GOBUILD=${GOCMD} build -gcflags=all='-l -N' -ldflags "-s -w"
-
 
 BUILD_DIR=./build
 BINARY_DIR=$(BUILD_DIR)/bin
